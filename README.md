@@ -9,13 +9,15 @@ for additional details.
 
 ## Software Architecture
 
-This application is built by copying the OB-UDPST respository source code into
+This application is built using Microsoft Visual Studio, specifically the 2026
+Community (free) edition. The OB-UDPST respository source code is copied into
 a project subdirectory called "udpst". Although native Windows code was created to
-handle Windows-specific events (for the GUI, timers, etc.), all of the 
-protocol handling and IP capacity testing is done by the core OB-UDPST software.
-No modification of the original OB-UDPST source is required.
+handle Windows-specific events (the GUI, timers, I/O notifications), all of the 
+protocol handling and actual IP capacity testing is done by the core OB-UDPST
+software. No modification of the original OB-UDPST source is required.
 
 *Note: The OB-UDPST version included with this project under "udpst" may be
-different than the released version found at the mirror listed above.
-As a reminder, a newer version of the server will be backward compatible with
-clients at least one version behind. However, the opposite is not supported.*
+newer than the released version found at the mirror listed above. If so, the latest
+release candidate is available via the BBF Bitbucket repository available to project
+members. As a reminder, a newer version of the server will be backward compatible with
+clients at least one version behind.*
