@@ -37,9 +37,11 @@
 // AUTH_KEY_ENABLE as a preprocessor defintition for "All Configurations" &
 // "All Platforms" under project properties.
 //
-// Author                  Date          Comments
-// --------------------    ----------    ----------------------------------
-// Len Ciavattone          11/29/2025    Created for OB-UDPST version 9.0.0
+// Author               Date            Comments
+// ----------------     ----------      ----------------------------------
+// Len Ciavattone       11/29/2025      Created for OB-UDPST version 9.0.0
+// Len Ciavattone       12/15/2025      Add max bandwidth support in server
+//                                      mode and bimodal prefix support
 //
 //
 
@@ -89,7 +91,7 @@ extern "C" {
 #define PLATFORM_BITS "32"
 #endif
 #define SOFTWARE_TITLE_WIN "UDP Speed Test for Windows"
-#define WINDOWS_VER "1.0.0"
+#define WINDOWS_VER "1.0.1"
 #define WM_SOCKET (WM_USER + 1)
 #define MAX_LOADSTRING 100
 #define MAX_LINELEN 256
@@ -350,7 +352,25 @@ void ProcessTimers() {
         for (i = 0; i <= repo.maxConnIndex; i++) {
                 if (tspecisset(&conn[i].endTime)) {
                         if (tspeccmp(&repo.systemClock, &conn[i].endTime, > )) {
-                                if (monConn >= 0) {
+                                nCharCount = 0;
+                                if (repo.isServer) {
+                                        if (conf.maxBandwidth > 0) {
+                                                // Adjust current upstream/downstream bandwidth
+                                                if (conn[i].testType == TEST_TYPE_US) {
+                                                        if ((repo.usBandwidth -= conn[i].maxBandwidth) < 0)
+                                                                repo.usBandwidth = 0;
+                                                } else {
+                                                        if ((repo.dsBandwidth -= conn[i].maxBandwidth) < 0)
+                                                                repo.dsBandwidth = 0;
+                                                }
+                                                if (conf.verbose) {
+                                                        nCharCount = sprintf(scratch, "[%d]End time reached (New USBW: %d, DSBW: %d)\n", i, repo.usBandwidth,
+                                                                repo.dsBandwidth);
+                                                        write_alt(-1, scratch, nCharCount);
+                                                }
+                                        }
+                                }
+                                if (nCharCount == 0 && conf.verbose) {
                                         nCharCount = sprintf(scratch, "[%d]End time reached", i);
                                         write_alt(-1, scratch, nCharCount);
                                 }
@@ -515,9 +535,9 @@ void FormatSetupDialog(HWND hDlg, BOOL isServer) {
                 isClient = FALSE;
 
         EnableWindow(GetDlgItem(hDlg, IDC_TESTINTTIME), isClient);
-        EnableWindow(GetDlgItem(hDlg, IDC_MAXBANDWIDTH), isClient);
         EnableWindow(GetDlgItem(hDlg, IDC_USEOWDELVAR), isClient);
         EnableWindow(GetDlgItem(hDlg, IDC_IGNOREOOODUP), isClient);
+        EnableWindow(GetDlgItem(hDlg, IDC_BIMODALCOUNT), isClient);
         EnableWindow(GetDlgItem(hDlg, IDC_RATEADJALGO), isClient);
         EnableWindow(GetDlgItem(hDlg, IDC_LOWTHRESH), isClient);
         EnableWindow(GetDlgItem(hDlg, IDC_UPPERTHRESH), isClient);
@@ -603,14 +623,16 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
                         CheckDlgButton(hDlg, IDC_VERBOSE, BST_CHECKED);
                 else
                         CheckDlgButton(hDlg, IDC_VERBOSE, BST_UNCHECKED);
-        } else {
-                if (IsDlgButtonChecked(hDlg, IDC_VERBOSE) == BST_CHECKED) {
-                        conf.verbose = TRUE;
-                        monConn = errConn;
-                } else {
-                        conf.verbose = FALSE;
-                        monConn = -1;
-                }
+        }
+ else {
+         if (IsDlgButtonChecked(hDlg, IDC_VERBOSE) == BST_CHECKED) {
+                 conf.verbose = TRUE;
+                 monConn = errConn;
+         }
+         else {
+                 conf.verbose = FALSE;
+                 monConn = -1;
+         }
         }
 
         if (initDialog) {
@@ -618,7 +640,8 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
                         CheckDlgButton(hDlg, IDC_LOSSRATIO, BST_CHECKED);
                 else
                         CheckDlgButton(hDlg, IDC_LOSSRATIO, BST_UNCHECKED);
-        } else {
+        }
+        else {
                 if (IsDlgButtonChecked(hDlg, IDC_LOSSRATIO) == BST_CHECKED)
                         conf.showLossRatio = TRUE;
                 else
@@ -630,7 +653,8 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
                         CheckDlgButton(hDlg, IDC_TRADITIONALMTU, BST_CHECKED);
                 else
                         CheckDlgButton(hDlg, IDC_TRADITIONALMTU, BST_UNCHECKED);
-        } else {
+        }
+        else {
                 if (IsDlgButtonChecked(hDlg, IDC_TRADITIONALMTU) == BST_CHECKED)
                         conf.traditionalMTU = TRUE;
                 else
@@ -642,7 +666,8 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
                         CheckDlgButton(hDlg, IDC_DISABLEJUMBO, BST_UNCHECKED);
                 else
                         CheckDlgButton(hDlg, IDC_DISABLEJUMBO, BST_CHECKED);
-        } else {
+        }
+        else {
                 if (IsDlgButtonChecked(hDlg, IDC_DISABLEJUMBO) == BST_CHECKED)
                         conf.jumboStatus = FALSE;
                 else
@@ -654,9 +679,11 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
                         CheckDlgButton(hDlg, IDC_IGNOREOOODUP, BST_CHECKED);
                 else
                         CheckDlgButton(hDlg, IDC_IGNOREOOODUP, BST_UNCHECKED);
-        } else if (repo.isServer) {
+        }
+        else if (repo.isServer) {
                 conf.ignoreOooDup = DEF_IGNORE_OOODUP;
-        } else {
+        }
+        else {
                 if (IsDlgButtonChecked(hDlg, IDC_IGNOREOOODUP) == BST_CHECKED)
                         conf.ignoreOooDup = TRUE;
                 else
@@ -665,9 +692,11 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
 
         if (initDialog) {
                 SetDlgItemInt(hDlg, IDC_TESTINTTIME, conf.testIntTime, FALSE);
-        } else if (repo.isServer) {
+        }
+        else if (repo.isServer) {
                 conf.testIntTime = MAX_TESTINT_TIME;
-        } else {
+        }
+        else {
                 var = GetDlgItemInt(hDlg, IDC_TESTINTTIME, &bTranslated, FALSE);
                 if (ParameterCheck(var, MIN_TESTINT_TIME, MAX_TESTINT_TIME, L"Test Interval Time"))
                         return TRUE;
@@ -677,10 +706,12 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
         if (initDialog) {
                 if (conf.maxBandwidth > 0) {
                         SetDlgItemInt(hDlg, IDC_MAXBANDWIDTH, conf.maxBandwidth, FALSE);
-                } else {
+                }
+                else {
                         SetDlgItemTextA(hDlg, IDC_MAXBANDWIDTH, "");
                 }
-        } else {
+        }
+        else {
                 var = GetDlgItemInt(hDlg, IDC_MAXBANDWIDTH, &bTranslated, FALSE);
                 if (!bTranslated)
                         var = 0;
@@ -691,17 +722,42 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
 
         if (initDialog) {
                 if (conf.bimodalCount != DEF_BIMODAL_COUNT) {
-                        SetDlgItemInt(hDlg, IDC_BIMODALCOUNT, conf.bimodalCount, FALSE);
+                        i = 0;
+                        if (conf.srAdjSuppCount > 0)
+                                scratch[i++] = '-';
+                        sprintf(&scratch[i], "%d", conf.bimodalCount);
+                        SetDlgItemTextA(hDlg, IDC_BIMODALCOUNT, scratch);
                 } else {
                         SetDlgItemTextA(hDlg, IDC_BIMODALCOUNT, "");
                 }
+        } else if (repo.isServer) {
+                conf.bimodalCount = DEF_BIMODAL_COUNT;
+                conf.srAdjSuppCount = 0;
         } else {
-                var = GetDlgItemInt(hDlg, IDC_BIMODALCOUNT, &bTranslated, FALSE);
-                if (!bTranslated)
-                        var = DEF_BIMODAL_COUNT;
-                else if (ParameterCheck(var, MIN_BIMODAL_COUNT, MAX_BIMODAL_COUNT, L"Bimodal Initial Sub-intervals"))
-                        return TRUE;
+                CHAR* endptr;
+                int suppcnt = 0;
+                var = DEF_BIMODAL_COUNT;
+                if (GetDlgItemTextA(hDlg, IDC_BIMODALCOUNT, scratch, STRING_SIZE) > 0) {
+                        i = 0;
+                        if (scratch[i] == '-')
+                                i++;
+                        var = DEF_BIMODAL_COUNT; // Invalid as entry
+                        if (scratch[i] != '\0') {
+                                var = (int) strtol(&scratch[i], &endptr, 10);
+                                if (*endptr != '\0') // Trailing junk invalidates entry
+                                        var = DEF_BIMODAL_COUNT;
+                        }
+                        if (ParameterCheck(var, MIN_BIMODAL_COUNT, MAX_BIMODAL_COUNT, L"Bimodal Initial Sub-intervals"))
+                                return TRUE;
+                        if (var >= (conf.testIntTime * MSECINSEC) / conf.subIntPeriod) {
+                                MessageBox(NULL, L"Bimodal count must be less than total sub-intervals", L"Parameter Out-of-Range", MB_OK | MB_ICONINFORMATION);
+                                return TRUE;
+                        }
+                        if (i > 0) // If '-' prefix was present
+                                suppcnt = var;
+                }
                 conf.bimodalCount = var;
+                conf.srAdjSuppCount = suppcnt;
         }
 
 #ifdef AUTH_KEY_ENABLE
@@ -768,30 +824,38 @@ BOOL ProcessSetupDialog(HWND hDlg, BOOL initDialog) {
 
         if (initDialog) {
                 if (conf.srIndexConf != DEF_SRINDEX_CONF) {
-                        var = 0;
+                        i = 0;
                         if (conf.srIndexIsStart)
-                                scratch[var++] = SRIDX_ISSTART_PREFIX;
-                        sprintf(&scratch[var], "%d", conf.srIndexConf);
+                                scratch[i++] = SRIDX_ISSTART_PREFIX;
+                        sprintf(&scratch[i], "%d", conf.srIndexConf);
                         SetDlgItemTextA(hDlg, IDC_SRINDEXCONF, scratch);
                 } else {
                         SetDlgItemTextA(hDlg, IDC_SRINDEXCONF, "");
                 }
         } else if (repo.isServer) {
                 conf.srIndexConf = MAX_SRINDEX_CONF;
+                conf.srIndexIsStart = FALSE;
         } else {
+                CHAR* endptr;
+                BOOL bvar = FALSE;
+                var = DEF_SRINDEX_CONF;
                 if (GetDlgItemTextA(hDlg, IDC_SRINDEXCONF, scratch, STRING_SIZE) > 0) {
-                        var = 0;
-                        if (*scratch == SRIDX_ISSTART_PREFIX) {
-                                var++;
-                                conf.srIndexIsStart = TRUE;
+                        i = 0;
+                        if (scratch[i] == SRIDX_ISSTART_PREFIX) {
+                                i++;
+                                bvar = TRUE;
                         }
-                        var = atoi(&scratch[var]);
+                        var = DEF_SRINDEX_CONF; // Invalid as entry
+                        if (scratch[i] != '\0') {
+                                var = (int) strtol(&scratch[i], &endptr, 10);
+                                if (*endptr != '\0') // Trailing junk invalidates entry
+                                        var = DEF_SRINDEX_CONF;
+                        }
                         if (ParameterCheck(var, MIN_SRINDEX_CONF, MAX_SRINDEX_CONF, L"Sending Rate Index"))
                                 return TRUE;
-                } else {
-                        var = DEF_SRINDEX_CONF;
                 }
                 conf.srIndexConf = var;
+                conf.srIndexIsStart = bvar;
         }
 
         //
