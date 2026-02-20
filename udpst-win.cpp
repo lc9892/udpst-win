@@ -42,6 +42,7 @@
 // Len Ciavattone       11/29/2025      Created for OB-UDPST version 9.0.0
 // Len Ciavattone       12/15/2025      Add max bandwidth support in server
 //                                      mode and bimodal prefix support
+// Len Ciavattone       02/20/2026      Disabled time limited testing
 //
 //
 
@@ -91,14 +92,14 @@ extern "C" {
 #define PLATFORM_BITS "32"
 #endif
 #define SOFTWARE_TITLE_WIN "UDP Speed Test for Windows"
-#define WINDOWS_VER "1.0.3"
+#define WINDOWS_VER "1.0.4"
 #define WM_SOCKET (WM_USER + 1)
 #define MAX_LOADSTRING 100
 #define MAX_LINELEN 256
 #define TEXT_BUFFER_SIZE 2048 // Must be power of 2 (2^N)
 #define TEXT_BUFFER_MASK (TEXT_BUFFER_SIZE - 1)
 #define WRITE_FD_NOSCROLL -2
-#define TIME_LIMITED_TESTING
+//#define TIME_LIMITED_TESTING
 //#define USE_TRANSMITPACKETS // Disabled (underperforms standard send with non-server Windows editions)
 
 //
@@ -264,7 +265,7 @@ int APIENTRY wWinMain(_In_ HINSTANCE hInstance,
         //
         MSG msg;
         FILETIME systemFileTime;
-        ULARGE_INTEGER sysTime, sysTimeLast;
+        ULARGE_INTEGER sysTime = { 0 }, sysTimeLast = { 0 };
         GetSystemTimePreciseAsFileTime(&systemFileTime);
         sysTimeLast.LowPart = systemFileTime.dwLowDateTime;
         sysTimeLast.HighPart = systemFileTime.dwHighDateTime;
@@ -409,7 +410,7 @@ void ProcessTimers() {
 //  Register the window class
 //
 ATOM MyRegisterClass(HINSTANCE hInstance) {
-        WNDCLASSEXW wcex;
+        WNDCLASSEXW wcex = { 0 };
         HBRUSH hBrush = CreateSolidBrush(rgbBG);
 
         wcex.cbSize = sizeof(WNDCLASSEX);
@@ -893,7 +894,7 @@ LRESULT CALLBACK WndProc(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
         HDC hdc;
         PAINTSTRUCT ps;
         TEXTMETRIC tm;
-        SCROLLINFO si;
+        SCROLLINFO si = { 0 };
 
         static int xClient;     // Width of client area 
         static int yClient;     // Height of client area 
@@ -1303,7 +1304,7 @@ void CopyToClipboard(void) {
                 j = iLineNext;
         for (i = 0; i < iLineCount; i++) {
                 tl = &TextBuffer[j];
-                bufsize += tl->iLineLength + 2; // Add space for CR/LF
+                bufsize += (SIZE_T) tl->iLineLength + 2U; // Add space for CR/LF
                 j = ++j & TEXT_BUFFER_MASK;
         }
         if (bufsize == 0) {
@@ -1351,7 +1352,7 @@ void CopyToClipboard(void) {
 size_t write_alt(int fd, const char *buf, size_t count) {
         int i, j = 0;
         char *s = (char *) buf;
-        SCROLLINFO si;
+        SCROLLINFO si = { 0 };
         struct TextLine *tl;
 
         //
@@ -1685,10 +1686,11 @@ int SetupTransmitPackets(SOCKET s) {
 // Initiate testing as either a client (sending a setup request) or a server (awaiting setup requests)
 //
 void StartTest() {
-        int i, var;
+        int i;
         iSendBlocked = 0;
 
 #ifdef TIME_LIMITED_TESTING
+        int var;
         char month[8] = {0};
         struct tm t = {0};
         static const char month_names[] = "JanFebMarAprMayJunJulAugSepOctNovDec";
