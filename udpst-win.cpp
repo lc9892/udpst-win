@@ -92,7 +92,7 @@ extern "C" {
 #define PLATFORM_BITS "32"
 #endif
 #define SOFTWARE_TITLE_WIN "UDP Speed Test for Windows"
-#define WINDOWS_VER "1.0.4"
+#define WINDOWS_VER "1.0.5"
 #define WM_SOCKET (WM_USER + 1)
 #define MAX_LOADSTRING 100
 #define MAX_LINELEN 256
